@@ -1,0 +1,22 @@
+# Node modules
+node_modules
+
+# Build output
+dist
+build
+
+# Environment files
+.env
+
+# Package lock files
+package-lock.json
+yarn.lock
+
+# Public assets (images, uploads, compiled files)
+public
+
+# Coverage reports
+coverage
+
+# Logs
+*.log
