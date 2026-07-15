@@ -1,0 +1,16 @@
+{
+  "name": "chaiorbackend",
+  "version": "1.0.0",
+  "description": "A backend project with the help of ChaiaurCode Channel",
+  "keywords": [
+    "javascript",
+    "backend"
+  ],
+  "license": "ISC",
+  "author": "Akash",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
