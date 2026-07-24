@@ -96,11 +96,10 @@ const registerUser = asyncHandler(async (req, res) => {
     // deletes the local temp copy, and returns Cloudinary's response object
     // (which includes .url, the public link to the uploaded file).
     // If upload fails internally, uploadOnCloudinary returns null.
-    const avatar = await uploadOnCloudinary(avatarLocalPath);
-
-    // coverImage is optional — only attempt upload if a file was actually provided.
-    // Using a ternary here: if coverImageLocalPath exists, upload it; otherwise null.
-    const coverImage = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath) : null;
+    const [avatar, coverImage] = await Promise.all([
+    uploadOnCloudinary(avatarLocalPath),
+    coverImageLocalPath ? uploadOnCloudinary(coverImageLocalPath) : Promise.resolve(null)
+]);
 
     // If Cloudinary upload failed for the (required) avatar, stop here.
     // 500 = Internal Server Error, since this isn't the user's fault —
