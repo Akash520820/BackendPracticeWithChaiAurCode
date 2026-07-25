@@ -4,6 +4,21 @@ const { ApiResponse } = require('../utils/ApiResponse.js');
 const { User } = require("../models/user.model.js");
 const { uploadOnCloudinary } = require('../utils/cloudinary.js');
 
+const generateAccessTokenAndRefreshToken = async (userId) => {
+
+    try{
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        user.refreshToken = refreshToken;
+        await user.save({validateBeforeSave: false}); // skip validation to avoid errors if other required fields are missing
+        return { accessToken, refreshToken };
+    }catch(err){
+        throw new ApiError(500, "Somthing want wrong while generating tokens")
+    }
+}
+
 // asyncHandler wraps this whole function so we don't need try/catch everywhere.
 // If anything inside throws (like our ApiError calls below), asyncHandler
 // catches it and passes it to Express's error-handling middleware via next(err).
@@ -16,7 +31,7 @@ const registerUser = asyncHandler(async (req, res) => {
     // Note: avatar and coverImage are NOT here — they are files, not text,
     // so they live in req.files instead (handled by multer, see Step 4).
     const { userName, email, fullName, password } = req.body
-    console.log("email:", email) // quick debug log to confirm data is arriving correctly
+    // console.log("email:", email) // quick debug log to confirm data is arriving correctly
 
 
     // ---- STEP 2: Validation - check required fields are not empty ----
@@ -148,4 +163,87 @@ const registerUser = asyncHandler(async (req, res) => {
     )
 });
 
-module.exports = { registerUser };
+const loginUser = asyncHandler(async (req, res) => {
+ 
+    const {email,password } = req.body
+
+    //Validate Input
+    if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      message: "Email and password are required"
+    });
+  }
+    //Find User
+    const user = await User.findOne({ email })
+    if (!user) {
+        throw new ApiError(404, "User not found with this email")
+    }
+    //Verify Password
+    const isPasswordValid = await user.isPasswordCorrect(password)
+    if (!isPasswordValid) {
+        throw new ApiError(401, "Invalid user credentials")
+    }
+    
+    //Generate Access Token & Refresh Token
+
+    const { accessToken, refreshToken } = await generateAccessTokenAndRefreshToken(user._id)
+
+    //You don’t want sensitive fields (hashed password, refresh token stored in DB) to be exposed to the frontend.
+    //The frontend only needs safe profile info (like userName, email, avatar).
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+
+    // ---- Cookie options ----
+    // httpOnly: true  -> JS on the frontend CANNOT access this cookie (protects
+    //                    against XSS attacks stealing the token)
+    // secure: true    -> cookie is only sent over HTTPS. We only enable this in
+    //                    production because localhost dev usually runs on http.
+    const options = {
+        httpOnly: true,
+        secure: true,
+    }
+     //send cookie with refresh token and access token in response
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                { user: loggedInUser, accessToken, refreshToken },
+                "User logged in successfully"
+            )
+        )
+    //Logout Endpoint
+    
+
+});
+
+const logOutUser = asyncHandler(async (req, res) => {
+     
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                refreshToken: undefined 
+            }
+        },
+        {
+            new: true // return the updated document (not required here, but good practice)
+        }
+    )
+    const options = {
+        httpOnly: true,
+        secure: true,
+    }
+    return res
+        .status(200)
+        .clearCookie("accessToken", options)
+        .clearCookie("refreshToken", options)
+        .json(new ApiResponse(200, {}, "User logged out successfully"))
+});
+
+
+    
+
+module.exports = { registerUser, loginUser, logOutUser };

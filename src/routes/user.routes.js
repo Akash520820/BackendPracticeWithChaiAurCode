@@ -8,5 +8,9 @@ userRouter.route('/register').post(
     upload.fields([{ name: 'avatar', maxCount: 1 }, { name: 'coverImage', maxCount: 1 }]),
     registerUser
 );
+userRouter.route('/login').post(loginUser);
+
+// Secure route for logOut the user
+userRouter.route('/logout').post(verifyJWT, logOutUser);
 
 module.exports = userRouter;
