@@ -1,6 +1,7 @@
 const express = require('express');
-const { registerUser } = require('../controllers/user.controller.js');
+const { verifyJWT } = require('../middlewares/auth.middleware.js');
 const { upload } = require('../middlewares/multer.middleware.js');
+const { registerUser, loginUser, logOutUser } = require('../controllers/user.controller.js');
 
 const userRouter = express.Router();
 userRouter.route('/register').post(
