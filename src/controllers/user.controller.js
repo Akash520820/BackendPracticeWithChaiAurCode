@@ -3,6 +3,8 @@ const { ApiError } = require('../utils/ApiError.js');
 const { ApiResponse } = require('../utils/ApiResponse.js');
 const { User } = require("../models/user.model.js");
 const { uploadOnCloudinary } = require('../utils/cloudinary.js');
+const jwt = require("jsonwebtoken");
+
 
 const generateAccessTokenAndRefreshToken = async (userId) => {
 
@@ -210,11 +212,11 @@ const loginUser = asyncHandler(async (req, res) => {
         .json(
             new ApiResponse(
                 200,
-                { user: loggedInUser, accessToken, refreshToken },
+                { user: loggedInUser},
                 "User logged in successfully"
             )
         )
-    //Logout Endpoint
+   
     
 
 });
@@ -243,7 +245,55 @@ const logOutUser = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, {}, "User logged out successfully"))
 });
 
+const refreshAccessToken = asyncHandler(async (req, res) => {
 
+    // ---- STEP 1: Get the refresh token from the request ----
+    // Cookie for browser clients, body for mobile/Postman-style clients.
+    const incomingRefreshToken = req.cookies?.refreshToken
+    if (!incomingRefreshToken) {
+        throw new ApiError(401, "Unauthorized request")
+    }
+
+    try{
+        // ---- STEP 2: Verify signature + expiry ----
+        const decodedToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        )
+        // ---- STEP 3: Find the user this token claims to belong to ----
+        const user = await User.findById(decodedToken?._id)
+        if (!user) {
+            throw new ApiError(401, "Invalid refresh token")
+        }
+        // ---- STEP 4: Confirm it matches what's stored in the DB ----
+        // Protects against reused/stale/stolen tokens — only the LATEST
+        // issued refresh token for this user is considered valid.
+        if (incomingRefreshToken !== user?.refreshToken) {
+            throw new ApiError(401, "Refresh token is expired or has been used")
+        }
+        // ---- STEP 5: Issue a new access token (and rotate the refresh token) ----
+        const { accessToken, newRefreshToken } = await generateAccessTokenAndRefreshToken(user._id)
+        const options = {
+            httpOnly: true,
+            secure: true,
+        }
+
+       return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", newRefreshToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                { user: loggedInUser},
+                "User logged in successfully"
+            )
+        )
+
+    }catch(err){
+        throw new ApiError(401, error?.message || "Invalid refresh token")
+    }
+})
     
 
-module.exports = { registerUser, loginUser, logOutUser };
+module.exports = { registerUser, loginUser, logOutUser, refreshAccessToken };

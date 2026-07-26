@@ -1,7 +1,7 @@
 const express = require('express');
 const { verifyJWT } = require('../middlewares/auth.middleware.js');
 const { upload } = require('../middlewares/multer.middleware.js');
-const { registerUser, loginUser, logOutUser } = require('../controllers/user.controller.js');
+const { registerUser, loginUser, logOutUser,refreshAccessToken } = require('../controllers/user.controller.js');
 
 const userRouter = express.Router();
 userRouter.route('/register').post(
@@ -13,5 +13,8 @@ userRouter.route('/login').post(loginUser);
 
 // Secure route for logOut the user
 userRouter.route('/logout').post(verifyJWT, logOutUser);
+// Secure route for logOut the user
+userRouter.route('/refresh-token').post(refreshAccessToken);
+
 
 module.exports = userRouter;
