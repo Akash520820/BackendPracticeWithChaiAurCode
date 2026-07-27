@@ -295,5 +295,152 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     }
 })
     
+const changeCurrentPassword = asyncHandler(async (req, res) => {
+    
+    const { oldPassword, newPassword, confirmPassword} = req.body
+    if (!oldPassword || !newPassword || !confirmPassword) {
+        throw new ApiError(400, "Please provide old, new, and confirm password");
+    }
+    if (newPassword !== confirmPassword) {
+        throw new ApiError(400, "New password and confirm password do not match");
+    }
+ 
+    const user = await User.findById(req.user?._id)
+    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
+    if (!isPasswordCorrect) {
+        throw new ApiError(400, "Invalid old password");
+    }
 
-module.exports = { registerUser, loginUser, logOutUser, refreshAccessToken };
+    user.password = newPassword
+    await user.save({ validateBeforeSave: false })
+    return res
+        .status(200)
+        .json(new ApiResponse(200, {}, "Password changed successfully"))
+})
+
+const getCurrentUser = asyncHandler(async (req, res) => {
+  return res
+    .status(200)
+    .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
+});
+
+const updateAccountDetails = asyncHandler(async (req, res) => {
+
+    // ---- STEP 1: Get updatable fields from the request body ----
+    // We deliberately only allow fullName and email here — NOT userName,
+    // NOT password, NOT avatar/coverImage. Those either have their own
+    // dedicated, more controlled endpoints (password, avatar) or shouldn't
+    // be casually editable (userName, since it's used in URLs/references).
+    const { fullName, email } = req.body
+
+    if (!fullName || !email) {
+        throw new ApiError(400, "Full name and email are required")
+    }
+
+    // ---- STEP 1b: Validate email format ----
+    // Same regex used in registerUser, kept consistent across the app.
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        throw new ApiError(400, "Please provide a valid email address")
+    }
+
+    // ---- STEP 2: Update the user document ----
+    // findByIdAndUpdate() finds AND updates in a single DB call — more
+    // efficient than fetching, mutating, then calling .save() separately.
+    // $set explicitly sets these fields (best practice over spreading the
+    // whole req.body directly into the update, which could let someone
+    // sneak in fields you didn't intend to allow, like isAdmin: true).
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                fullName,
+                email
+            }
+        },
+        { new: true } // return the UPDATED document, not the old one
+    ).select("-password -refreshToken")
+
+    // ---- STEP 3: Send success response ----
+    return res
+        .status(200)
+        .json(new ApiResponse(200, user, "Account details updated successfully"))
+});
+
+const updateUserAvatar = asyncHandler(async (req, res) => {
+     // ---- STEP 1: Get the new avatar file path ----
+    // multer's upload.single("avatar") middleware (added in the route) runs
+    // BEFORE this controller and populates req.file (singular — not req.files,
+    // since we're only handling ONE file field here, unlike registerUser
+    // which used .fields() for multiple named files).
+    const avatarLocalPath = req.file?.path
+
+    if (!avatarLocalPath) {
+        throw new ApiError(400, "Avatar file is missing")
+    }
+     // ---- STEP 2: Upload the new avatar to Cloudinary ----
+    const avatar = await uploadOnCloudinary(avatarLocalPath)
+     if (!avatar?.url) {
+        throw new ApiError(500, "Something went wrong while uploading avatar")
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                avatar: avatar.url
+            }
+        },
+        { new: true }
+    ).select("-password -refreshToken")
+
+    // ---- STEP 4: Send success response ----
+    return res
+        .status(200)
+        .json(new ApiResponse(200, user, "Avatar updated successfully"))
+})
+
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+
+    // ---- STEP 1: Get the new cover image file path ----
+    const coverImageLocalPath = req.file?.path
+
+    if (!coverImageLocalPath) {
+        throw new ApiError(400, "Cover image file is missing")
+    }
+
+    // ---- STEP 2: Upload the new cover image to Cloudinary ----
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
+
+    if (!coverImage?.url) {
+        throw new ApiError(500, "Something went wrong while uploading cover image")
+    }
+
+    // ---- STEP 3: Update the user's coverImage URL in the DB ----
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                coverImage: coverImage.url
+            }
+        },
+        { new: true }
+    ).select("-password -refreshToken")
+
+    // ---- STEP 4: Send success response ----
+    return res
+        .status(200)
+        .json(new ApiResponse(200, user, "Cover image updated successfully"))
+});
+
+module.exports = { 
+    registerUser, 
+    loginUser, 
+    logOutUser, 
+    refreshAccessToken, 
+    changeCurrentPassword, 
+    getCurrentUser, 
+    updateAccountDetails,
+    updateUserAvatar,
+    updateUserCoverImage
+};
