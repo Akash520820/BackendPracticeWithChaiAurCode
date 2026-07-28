@@ -440,9 +440,7 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, user, "Cover image updated successfully"))
 });
 
-const updateUserCoverImage = asyncHandler(async (req, res) => {
-    
-})
+
 
 module.exports = { 
     registerUser, 
