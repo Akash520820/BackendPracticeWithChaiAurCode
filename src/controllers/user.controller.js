@@ -2,7 +2,7 @@ const { asyncHandler } = require('../utils/asyncHandler.js');
 const { ApiError } = require('../utils/ApiError.js');
 const { ApiResponse } = require('../utils/ApiResponse.js');
 const { User } = require("../models/user.model.js");
-const { uploadOnCloudinary } = require('../utils/cloudinary.js');
+const { uploadOnCloudinary,deleteFromCloudinary } = require('../utils/cloudinary.js');
 const jwt = require("jsonwebtoken");
 
 
@@ -368,33 +368,35 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 });
 
 const updateUserAvatar = asyncHandler(async (req, res) => {
-     // ---- STEP 1: Get the new avatar file path ----
-    // multer's upload.single("avatar") middleware (added in the route) runs
-    // BEFORE this controller and populates req.file (singular — not req.files,
-    // since we're only handling ONE file field here, unlike registerUser
-    // which used .fields() for multiple named files).
-    const avatarLocalPath = req.file?.path
 
+    const avatarLocalPath = req.file?.path
     if (!avatarLocalPath) {
         throw new ApiError(400, "Avatar file is missing")
     }
-     // ---- STEP 2: Upload the new avatar to Cloudinary ----
+
+    // ---- Capture the OLD avatar URL before we overwrite it ----
+    const oldAvatarUrl = req.user?.avatar
+
+    // ---- Upload the new avatar ----
     const avatar = await uploadOnCloudinary(avatarLocalPath)
-     if (!avatar?.url) {
+    if (!avatar?.url) {
         throw new ApiError(500, "Something went wrong while uploading avatar")
     }
 
+    // ---- Update DB with new URL ----
     const user = await User.findByIdAndUpdate(
         req.user?._id,
-        {
-            $set: {
-                avatar: avatar.url
-            }
-        },
+        { $set: { avatar: avatar.url } },
         { new: true }
     ).select("-password -refreshToken")
 
-    // ---- STEP 4: Send success response ----
+    // ---- Only NOW delete the old image — after the new one is confirmed saved ----
+    // Order matters: if we deleted the old image FIRST and the new upload/DB
+    // update failed, the user would end up with NO avatar at all.
+    if (oldAvatarUrl) {
+        await deleteFromCloudinary(oldAvatarUrl)
+    }
+
     return res
         .status(200)
         .json(new ApiResponse(200, user, "Avatar updated successfully"))
@@ -409,6 +411,7 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Cover image file is missing")
     }
 
+    const oldcoverImageUrl = req.user?.coverImage
     // ---- STEP 2: Upload the new cover image to Cloudinary ----
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
@@ -427,11 +430,19 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         { new: true }
     ).select("-password -refreshToken")
 
+    if (oldcoverImageUrl) {
+        await deleteFromCloudinary(oldcoverImageUrl)
+    }
+
     // ---- STEP 4: Send success response ----
     return res
         .status(200)
         .json(new ApiResponse(200, user, "Cover image updated successfully"))
 });
+
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+    
+})
 
 module.exports = { 
     registerUser, 
